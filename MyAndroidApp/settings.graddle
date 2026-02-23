@@ -1,2 +1,3 @@
+// MyAndroidApp/settings.gradle
 rootProject.name = "MyAndroidApp"
 include ':app'
