@@ -1,0 +1,287 @@
+#!/bin/bash
+
+# -------------------------------
+# Config
+# -------------------------------
+PROJECT_NAME="MyCalculatorApp"
+PROJECT_DIR="$PWD/$PROJECT_NAME"
+APP_DIR="$PROJECT_DIR/app"
+MAIN_PACKAGE_DIR="$APP_DIR/src/main/java/com/example/mycalculator"
+RES_DIR="$APP_DIR/src/main/res"
+LAYOUT_DIR="$RES_DIR/layout"
+VALUES_DIR="$RES_DIR/values"
+
+# Adjust this if your SDK is somewhere else
+SDK_PATH="${HOME}/Android/Sdk"
+
+# -------------------------------
+# Create directories
+# -------------------------------
+mkdir -p "$MAIN_PACKAGE_DIR"
+mkdir -p "$LAYOUT_DIR"
+mkdir -p "$VALUES_DIR"
+
+# -------------------------------
+# Root build.gradle.kts
+# -------------------------------
+cat > "$PROJECT_DIR/build.gradle.kts" <<EOF
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.3.1")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+EOF
+
+# -------------------------------
+# settings.gradle.kts
+# -------------------------------
+cat > "$PROJECT_DIR/settings.gradle.kts" <<EOF
+rootProject.name = "$PROJECT_NAME"
+include(":app")
+EOF
+
+# -------------------------------
+# gradle.properties
+# -------------------------------
+cat > "$PROJECT_DIR/gradle.properties" <<EOF
+android.useAndroidX=true
+android.enableJetifier=true
+EOF
+
+# -------------------------------
+# local.properties
+# -------------------------------
+cat > "$PROJECT_DIR/local.properties" <<EOF
+sdk.dir=$SDK_PATH
+EOF
+
+# -------------------------------
+# app/build.gradle.kts
+# -------------------------------
+cat > "$APP_DIR/build.gradle.kts" <<EOF
+plugins {
+    id("com.android.application")
+}
+
+android {
+    namespace = "com.example.mycalculator"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.mycalculator"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+        }
+    }
+}
+
+dependencies {
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.core:core-ktx:1.13.0")
+}
+EOF
+
+# -------------------------------
+# MainActivity.java
+# -------------------------------
+cat > "$MAIN_PACKAGE_DIR/MainActivity.java" <<EOF
+package com.example.mycalculator;
+
+import android.os.Bundle;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import androidx.appcompat.app.AppCompatActivity;
+
+public class MainActivity extends AppCompatActivity {
+
+    private EditText input;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        input = findViewById(R.id.input);
+
+        int[] buttons = {
+                R.id.btn0, R.id.btn1, R.id.btn2, R.id.btn3, R.id.btn4,
+                R.id.btn5, R.id.btn6, R.id.btn7, R.id.btn8, R.id.btn9,
+                R.id.btnAdd, R.id.btnSub, R.id.btnMul, R.id.btnDiv, R.id.btnEq, R.id.btnClear
+        };
+
+        View.OnClickListener listener = v -> {
+            Button b = (Button) v;
+            String text = b.getText().toString();
+
+            switch (text) {
+                case "=":
+                    try {
+                        String expr = input.getText().toString();
+                        double result = eval(expr);
+                        input.setText(String.valueOf(result));
+                    } catch (Exception e) {
+                        input.setText("Error");
+                    }
+                    break;
+                case "C":
+                    input.setText("");
+                    break;
+                default:
+                    input.append(text);
+                    break;
+            }
+        };
+
+        for (int id : buttons) {
+            findViewById(id).setOnClickListener(listener);
+        }
+    }
+
+    private double eval(String expr) {
+        return new Object() {
+            int pos = -1, ch;
+
+            void nextChar() {
+                ch = (++pos < expr.length()) ? expr.charAt(pos) : -1;
+            }
+
+            boolean eat(int charToEat) {
+                while (ch == ' ') nextChar();
+                if (ch == charToEat) {
+                    nextChar();
+                    return true;
+                }
+                return false;
+            }
+
+            double parse() {
+                nextChar();
+                double x = parseExpression();
+                if (pos < expr.length()) throw new RuntimeException("Unexpected: " + (char)ch);
+                return x;
+            }
+
+            double parseExpression() {
+                double x = parseTerm();
+                for (;;) {
+                    if      (eat('+')) x += parseTerm();
+                    else if (eat('-')) x -= parseTerm();
+                    else return x;
+                }
+            }
+
+            double parseTerm() {
+                double x = parseFactor();
+                for (;;) {
+                    if      (eat('*')) x *= parseFactor();
+                    else if (eat('/')) x /= parseFactor();
+                    else return x;
+                }
+            }
+
+            double parseFactor() {
+                StringBuilder sb = new StringBuilder();
+                if ((ch >= '0' && ch <= '9') || ch == '.') {
+                    while ((ch >= '0' && ch <= '9') || ch == '.') {
+                        sb.append((char)ch);
+                        nextChar();
+                    }
+                    return Double.parseDouble(sb.toString());
+                } else {
+                    throw new RuntimeException("Unexpected: " + (char)ch);
+                }
+            }
+        }.parse();
+    }
+}
+EOF
+
+# -------------------------------
+# activity_main.xml
+# -------------------------------
+cat > "$LAYOUT_DIR/activity_main.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="none"
+        android:enabled="false"
+        android:textSize="24sp"/>
+
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:rowCount="5"
+        android:columnCount="4"
+        android:layout_marginTop="16dp">
+
+        <Button android:id="@+id/btn7" android:text="7"/>
+        <Button android:id="@+id/btn8" android:text="8"/>
+        <Button android:id="@+id/btn9" android:text="9"/>
+        <Button android:id="@+id/btnDiv" android:text="/"/>
+
+        <Button android:id="@+id/btn4" android:text="4"/>
+        <Button android:id="@+id/btn5" android:text="5"/>
+        <Button android:id="@+id/btn6" android:text="6"/>
+        <Button android:id="@+id/btnMul" android:text="*"/>
+
+        <Button android:id="@+id/btn1" android:text="1"/>
+        <Button android:id="@+id/btn2" android:text="2"/>
+        <Button android:id="@+id/btn3" android:text="3"/>
+        <Button android:id="@+id/btnSub" android:text="-"/>
+
+        <Button android:id="@+id/btn0" android:text="0"/>
+        <Button android:id="@+id/btnClear" android:text="C"/>
+        <Button android:id="@+id/btnEq" android:text="="/>
+        <Button android:id="@+id/btnAdd" android:text="+"/>
+    </GridLayout>
+</LinearLayout>
+EOF
+
+# -------------------------------
+# strings.xml
+# -------------------------------
+cat > "$VALUES_DIR/strings.xml" <<EOF
+<resources>
+    <string name="app_name">MyCalculator</string>
+</resources>
+EOF
+
+# -------------------------------
+# styles.xml
+# -------------------------------
+cat > "$VALUES_DIR/styles.xml" <<EOF
+<resources>
+    <style name="Theme.MyCalculator" parent="Theme.AppCompat.Light.NoActionBar">
+    </style>
+</resources>
+EOF
+
+echo "✅ Calculator app created at $PROJECT_DIR"
